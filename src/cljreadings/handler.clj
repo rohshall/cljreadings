@@ -15,9 +15,7 @@
 
 
 (defn get-devices []
-  (jdbc/with-connection db-spec
-    (jdbc/with-query-results rs ["SELECT * FROM devices"]
-      (doall rs))))
+  (jdbc/query db-spec ["SELECT * FROM devices"]))
 
 
 (defn str-to-timestamp [s]
@@ -27,16 +25,12 @@
 
 
 (defn create-device [{:keys [mac_addr device_type_id manufactured_at created_at] :as device-info}]
-  (println "creating device " device-info)
-  (jdbc/with-connection db-spec
-    (jdbc/insert-record :devices
-      {:mac_addr mac_addr :device_type_id device_type_id :manufactured_at (str-to-timestamp manufactured_at)})))
+  (jdbc/insert! db-spec :devices
+    {:mac_addr mac_addr :device_type_id device_type_id :manufactured_at (str-to-timestamp manufactured_at)}))
 
 
 (defn get-device [device-id]
-  (jdbc/with-connection db-spec
-    (jdbc/with-query-results res ["SELECT * FROM devices WHERE mac_addr = ?" device-id]
-      (doall res))))
+  (jdbc/query db-spec ["SELECT * FROM devices WHERE mac_addr = ?" device-id]))
 
 
 (defn get-device-readings [device-id {:keys [from to]}]
@@ -49,15 +43,12 @@
           to ["SELECT * FROM readings WHERE device_mac_addr = ? AND created_at < ?"
               device-id (str-to-timestamp to)]
           :else ["SELECT * FROM readings WHERE device_mac_addr = ?" device-id])]
-    (jdbc/with-connection db-spec
-      (jdbc/with-query-results res sql-params
-        (doall res)))))
+    (jdbc/query db-spec sql-params)))
 
 
 (defn create-device-reading [device-id {:keys [value]}]
-  (jdbc/with-connection db-spec
-    (jdbc/insert-record :readings
-      {:device_mac_addr device-id :value value :created_at (java.sql.Timestamp. (.getTime (java.util.Date.)))})))
+  (jdbc/insert! db-spec :readings
+    {:device_mac_addr device-id :value value :created_at (java.sql.Timestamp. (.getTime (java.util.Date.)))}))
 
 
 (defroutes app-routes

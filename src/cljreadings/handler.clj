@@ -13,24 +13,43 @@
               :user "sd_ventures"
               :password ""})
 
-
-(defn get-devices []
-  (jdbc/query db-spec ["SELECT * FROM devices"]))
-
+; Utility functions
 
 (defn str-to-timestamp [s]
-  (let [date-format (java.text.SimpleDateFormat. "yyyy-MM-dd")
-        parse-pos (java.text.ParsePosition. 0)]
-    (java.sql.Timestamp. (.getTime (.parse date-format s parse-pos)))))
+  (and s (java.sql.Timestamp. (.getTime (.parse (java.text.SimpleDateFormat. "yyyy-MM-dd") s (java.text.ParsePosition. 0))))))
 
 
-(defn create-device [{:keys [mac_addr device_type_id manufactured_at created_at] :as device-info}]
+(defn timestamp-to-str [t]
+  (and t (.format (java.text.SimpleDateFormat. "yyyy-MM-dd") t)))
+
+
+(defn device-to-str [{:keys [mac_addr device_type_id manufactured_at registered_at]}]
+  (hash-map "mac_addr" mac_addr "device_type_id" device_type_id 
+            "manufactured_at" (timestamp-to-str manufactured_at)
+            "registered_at" (timestamp-to-str registered_at)))
+
+
+(defn reading-to-str [{:keys [value created_at]}]
+  (hash-map "value" value "created_at" (timestamp-to-str created_at)))
+
+
+; Database query functions
+
+(defn get-devices []
+  (let [devices (jdbc/query db-spec ["SELECT * FROM devices"])]
+    (map device-to-str devices)))
+
+
+(defn create-device [{:keys [mac_addr device_type_id manufactured_at registered_at] :as device-info}]
   (jdbc/insert! db-spec :devices
-    {:mac_addr mac_addr :device_type_id device_type_id :manufactured_at (str-to-timestamp manufactured_at)}))
+    {:mac_addr mac_addr :device_type_id device_type_id
+     :manufactured_at (str-to-timestamp manufactured_at)
+     :registered_at (str-to-timestamp registered_at)}))
 
 
 (defn get-device [device-id]
-  (jdbc/query db-spec ["SELECT * FROM devices WHERE mac_addr = ?" device-id]))
+  (let [device (jdbc/query db-spec ["SELECT * FROM devices WHERE mac_addr = ?" device-id])]
+    (device-to-str device)))
 
 
 (defn get-device-readings [device-id {:keys [from to]}]
@@ -42,14 +61,17 @@
                 device-id (str-to-timestamp from)]
           to ["SELECT * FROM readings WHERE device_mac_addr = ? AND created_at < ?"
               device-id (str-to-timestamp to)]
-          :else ["SELECT * FROM readings WHERE device_mac_addr = ?" device-id])]
-    (jdbc/query db-spec sql-params)))
+          :else ["SELECT * FROM readings WHERE device_mac_addr = ?" device-id])
+        readings (jdbc/query db-spec sql-params)]
+    (map reading-to-str readings)))
 
 
 (defn create-device-reading [device-id {:keys [value]}]
   (jdbc/insert! db-spec :readings
     {:device_mac_addr device-id :value value :created_at (java.sql.Timestamp. (.getTime (java.util.Date.)))}))
 
+
+; Route definitions
 
 (defroutes app-routes
   (route/resources "/")

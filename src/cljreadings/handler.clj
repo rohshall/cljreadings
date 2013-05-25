@@ -4,14 +4,33 @@
             [compojure.route :as route]
             [clojure.java.jdbc :as jdbc]
             [ring.middleware.resource :refer [wrap-resource]]
-            [ring.middleware.json :refer [wrap-json-params]]
-            ))
+            [ring.middleware.json :refer [wrap-json-params]])
+  (:import (org.apache.tomcat.jdbc.pool DataSource PoolProperties)))
+
 
 (def db-spec {:classname "org.postgresql.Driver"
               :subprotocol "postgresql"
               :subname "sd_ventures_development"
               :user "sd_ventures"
               :password ""})
+
+(defn pool [spec]
+  (let [pp (doto (PoolProperties.)
+             (.setDriverClassName (:classname spec)) 
+             (.setUrl (str "jdbc:" (:subprotocol spec) ":" (:subname spec)))
+             (.setUsername (:user spec))
+             (.setPassword (:password spec))
+             (.setInitialSize 5)
+             (.setMaxActive 5)
+             (.setMaxIdle 5)
+             (.setMinIdle 2))
+        ds (doto (DataSource.)
+             (.setPoolProperties pp))]
+    {:datasource ds}))
+
+
+(def pooled-db (delay (pool db-spec)))
+
 
 ; Utility functions
 
@@ -36,19 +55,19 @@
 ; Database query functions
 
 (defn get-devices []
-  (let [devices (jdbc/query db-spec ["SELECT * FROM devices"])]
+  (let [devices (jdbc/query @pooled-db ["SELECT * FROM devices"])]
     (map device-to-str devices)))
 
 
 (defn create-device [{:keys [mac_addr device_type_id manufactured_at registered_at] :as device-info}]
-  (jdbc/insert! db-spec :devices
+  (jdbc/insert! @pooled-db :devices
     {:mac_addr mac_addr :device_type_id device_type_id
      :manufactured_at (str-to-timestamp manufactured_at)
      :registered_at (str-to-timestamp registered_at)}))
 
 
 (defn get-device [device-id]
-  (let [device (jdbc/query db-spec ["SELECT * FROM devices WHERE mac_addr = ?" device-id])]
+  (let [device (jdbc/query @pooled-db ["SELECT * FROM devices WHERE mac_addr = ?" device-id])]
     (device-to-str device)))
 
 
@@ -62,12 +81,12 @@
           to ["SELECT * FROM readings WHERE device_mac_addr = ? AND created_at < ?"
               device-id (str-to-timestamp to)]
           :else ["SELECT * FROM readings WHERE device_mac_addr = ?" device-id])
-        readings (jdbc/query db-spec sql-params)]
+        readings (jdbc/query @pooled-db sql-params)]
     (map reading-to-str readings)))
 
 
 (defn create-device-reading [device-id {:keys [value]}]
-  (jdbc/insert! db-spec :readings
+  (jdbc/insert! @pooled-db :readings
     {:device_mac_addr device-id :value value :created_at (java.sql.Timestamp. (.getTime (java.util.Date.)))}))
 
 

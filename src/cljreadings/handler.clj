@@ -16,11 +16,11 @@
 ; Utility functions
 
 (defn str-to-timestamp [s]
-  (and s (java.sql.Timestamp. (.getTime (.parse (java.text.SimpleDateFormat. "yyyy-MM-dd") s (java.text.ParsePosition. 0))))))
+  (and s (java.sql.Timestamp/valueOf (str s " 00:00:00"))))
 
 
 (defn timestamp-to-str [t]
-  (and t (.format (java.text.SimpleDateFormat. "yyyy-MM-dd") t)))
+  (and t (format "%tF" t)))
 
 
 (defn device-to-str [{:keys [mac_addr device_type_id manufactured_at registered_at]}]

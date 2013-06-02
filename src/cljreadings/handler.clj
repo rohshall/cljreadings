@@ -3,33 +3,22 @@
   (:require [compojure.handler :as handler]
             [compojure.route :as route]
             [clojure.java.jdbc :as jdbc]
+            [immutant.xa]
             [ring.middleware.resource :refer [wrap-resource]]
-            [ring.middleware.json :refer [wrap-json-params wrap-json-response]])
-  (:import (org.apache.tomcat.jdbc.pool DataSource PoolProperties)))
+            [ring.middleware.json :refer [wrap-json-params wrap-json-response]]))
 
 
-(def db-spec {:classname "org.postgresql.Driver"
-              :subprotocol "postgresql"
-              :subname "sd_ventures_development"
-              :user "sd_ventures"
-              :password ""})
-
-(defn pool [spec]
-  (let [pp (doto (PoolProperties.)
-             (.setDriverClassName (:classname spec)) 
-             (.setUrl (str "jdbc:" (:subprotocol spec) ":" (:subname spec)))
-             (.setUsername (:user spec))
-             (.setPassword (:password spec))
-             (.setInitialSize 5)
-             (.setMaxActive 5)
-             (.setMaxIdle 5)
-             (.setMinIdle 2))
-        ds (doto (DataSource.)
-             (.setPoolProperties pp))]
-    {:datasource ds}))
+(defonce ds
+  (immutant.xa/datasource "cljreadings"
+                          {:adapter "postgresql"
+                           :host (or (System/getenv "OPENSHIFT_POSTGRESQL_DB_HOST") "127.0.0.1")
+                           :username (or (System/getenv "OPENSHIFT_POSTGRESQL_DB_USERNAME") "sd_ventures")
+                           :password (or (System/getenv "OPENSHIFT_POSTGRESQL_DB_PASSWORD") "")
+                           :database (or (System/getenv "OPENSHIFT_APP_NAME") "sd_ventures_development")
+                           }))
 
 
-(def pooled-db (delay (pool db-spec)))
+(def db-spec {:datasource ds})
 
 
 ; Utility functions
@@ -55,19 +44,19 @@
 ; Database query functions
 
 (defn get-devices []
-  (let [devices (jdbc/query @pooled-db ["SELECT * FROM devices"])]
+  (let [devices (jdbc/query db-spec ["SELECT * FROM devices"])]
     (map device-to-str devices)))
 
 
 (defn create-device [{:keys [mac_addr device_type_id manufactured_at registered_at] :as device-info}]
-  (jdbc/insert! @pooled-db :devices
+  (jdbc/insert! db-spec :devices
     {:mac_addr mac_addr :device_type_id device_type_id
      :manufactured_at (str-to-timestamp manufactured_at)
      :registered_at (str-to-timestamp registered_at)}))
 
 
 (defn get-device [device-id]
-  (let [device (jdbc/query @pooled-db ["SELECT * FROM devices WHERE mac_addr = ?" device-id])]
+  (let [device (jdbc/query db-spec ["SELECT * FROM devices WHERE mac_addr = ?" device-id])]
     (device-to-str device)))
 
 
@@ -81,12 +70,12 @@
           to ["SELECT * FROM readings WHERE device_mac_addr = ? AND created_at < ?"
               device-id (str-to-timestamp to)]
           :else ["SELECT * FROM readings WHERE device_mac_addr = ?" device-id])
-        readings (jdbc/query @pooled-db sql-params)]
+        readings (jdbc/query db-spec sql-params)]
     (map reading-to-str readings)))
 
 
 (defn create-device-reading [device-id {:keys [value]}]
-  (jdbc/insert! @pooled-db :readings
+  (jdbc/insert! db-spec :readings
     {:device_mac_addr device-id :value value :created_at (java.sql.Timestamp. (.getTime (java.util.Date.)))}))
 
 
@@ -114,7 +103,7 @@
     (wrap-json-response)))
 
 
-(def war-handler
+#_(def war-handler
   (->
     app
     (wrap-resource "public")))

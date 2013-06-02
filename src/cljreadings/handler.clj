@@ -4,7 +4,7 @@
             [compojure.route :as route]
             [clojure.java.jdbc :as jdbc]
             [ring.middleware.resource :refer [wrap-resource]]
-            [ring.middleware.json :refer [wrap-json-params]])
+            [ring.middleware.json :refer [wrap-json-params wrap-json-response]])
   (:import (org.apache.tomcat.jdbc.pool DataSource PoolProperties)))
 
 
@@ -110,7 +110,8 @@
 (def app
   (->
   (handler/api app-routes)
-    (wrap-json-params)))
+    (wrap-json-params)
+    (wrap-json-response)))
 
 
 (def war-handler
